@@ -1,0 +1,163 @@
+// Auto Parts Store Business Software - Database Schema
+// Default datasource is SQLite for zero-config local/dev use.
+// For production, set DATABASE_URL to a Postgres/MySQL connection string
+// and change the provider below accordingly.
+//
+// Note: SQLite has no native enum type, so fields that are conceptually
+// enums (Role, PurchaseOrderStatus, SaleStatus, PaymentMethod,
+// StockMovementType) are modeled as String and validated at the API layer
+// (see src/routes/*.ts, which use zod z.enum(...) on every write). If you
+// switch the provider to postgresql, you can convert these back to real
+// `enum` blocks for stronger DB-level guarantees.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String   @default("CASHIER") // ADMIN | MANAGER | CASHIER
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sales          Sale[]
+  stockMovements StockMovement[]
+}
+
+model Category {
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+  parts Part[]
+}
+
+model Supplier {
+  id             Int             @id @default(autoincrement())
+  name           String
+  contactName    String?
+  email          String?
+  phone          String?
+  address        String?
+  createdAt      DateTime        @default(now())
+  parts          Part[]
+  purchaseOrders PurchaseOrder[]
+}
+
+model Part {
+  id           Int       @id @default(autoincrement())
+  sku          String    @unique
+  name         String
+  description  String?
+  brand        String?
+  categoryId   Int?
+  category     Category? @relation(fields: [categoryId], references: [id])
+  supplierId   Int?
+  supplier     Supplier? @relation(fields: [supplierId], references: [id])
+  costPrice    Float     @default(0)
+  sellingPrice Float     @default(0)
+  quantity     Int       @default(0)
+  reorderLevel Int       @default(5)
+  location     String?
+  imageUrl     String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  fitments       Fitment[]
+  saleItems      SaleItem[]
+  purchaseItems  PurchaseOrderItem[]
+  stockMovements StockMovement[]
+}
+
+// Vehicle compatibility (fitment) records for a part, e.g. Toyota Corolla 2015-2019
+model Fitment {
+  id       Int    @id @default(autoincrement())
+  partId   Int
+  part     Part   @relation(fields: [partId], references: [id], onDelete: Cascade)
+  make     String
+  model    String
+  yearFrom Int?
+  yearTo   Int?
+
+  @@index([make, model])
+}
+
+model Customer {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String?
+  phone     String?
+  address   String?
+  createdAt DateTime @default(now())
+
+  sales Sale[]
+}
+
+model PurchaseOrder {
+  id         Int                 @id @default(autoincrement())
+  supplierId Int
+  supplier   Supplier            @relation(fields: [supplierId], references: [id])
+  status     String              @default("PENDING") // PENDING | ORDERED | RECEIVED | CANCELLED
+  orderDate  DateTime            @default(now())
+  receivedAt DateTime?
+  notes      String?
+  items      PurchaseOrderItem[]
+}
+
+model PurchaseOrderItem {
+  id              Int           @id @default(autoincrement())
+  purchaseOrderId Int
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  partId          Int
+  part            Part          @relation(fields: [partId], references: [id])
+  quantity        Int
+  unitCost        Float
+}
+
+model Sale {
+  id            Int        @id @default(autoincrement())
+  invoiceNumber String     @unique
+  customerId    Int?
+  customer      Customer?  @relation(fields: [customerId], references: [id])
+  userId        Int
+  user          User       @relation(fields: [userId], references: [id])
+  items         SaleItem[]
+  subtotal      Float
+  taxRate       Float      @default(0)
+  taxAmount     Float      @default(0)
+  discount      Float      @default(0)
+  total         Float
+  paymentMethod String     @default("CASH") // CASH | CARD | MOBILE_MONEY | BANK_TRANSFER | OTHER
+  status        String     @default("COMPLETED") // COMPLETED | REFUNDED | VOID
+  createdAt     DateTime   @default(now())
+}
+
+model SaleItem {
+  id        Int    @id @default(autoincrement())
+  saleId    Int
+  sale      Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  partId    Int
+  part      Part   @relation(fields: [partId], references: [id])
+  quantity  Int
+  unitPrice Float
+  lineTotal Float
+}
+
+model StockMovement {
+  id        Int      @id @default(autoincrement())
+  partId    Int
+  part      Part     @relation(fields: [partId], references: [id])
+  type      String // IN | OUT | ADJUSTMENT
+  quantity  Int
+  reason    String?
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+}
